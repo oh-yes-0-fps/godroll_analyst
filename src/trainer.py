@@ -10,39 +10,9 @@ import numpy as np
 #   - all available perks
 #   - subclass hash (optional)
 
-class perkInput:
-    def __init__(self, weapon_type_hash: int, weapon_element_hash: int, weapon_rpm: int,
-                    perk_hash: int, secondary_perk_hash: int, all_available_perks: list[int], subclass_hash: int = 0):
-        self.weapon_type_hash = weapon_type_hash
-        self.weapon_element_hash = weapon_element_hash
-        self.weapon_rpm = weapon_rpm
-        self.perk_hash = perk_hash
-        self.secondary_perk_hash = secondary_perk_hash
-        self.subclass_hash = subclass_hash
-        if len(all_available_perks) > 12:
-            all_available_perks = all_available_perks[:12]
-        elif len(all_available_perks) < 12:
-            for i in range(12 - len(all_available_perks)):
-                all_available_perks.append(0)
-        self.all_available_perks = all_available_perks
-
-    def to_dict(self) -> dict:
-        return {
-            "weapon_type_hash": self.weapon_type_hash,
-            "weapon_element_hash": self.weapon_element_hash,
-            "weapon_rpm": self.weapon_rpm,
-            "perk_hash": self.perk_hash,
-            "other_perk_hash": self.secondary_perk_hash,
-            "all_available_perks": tuple(self.all_available_perks),
-            "subclass_hash": self.subclass_hash
-        }
 
 
 
-
-def make_input(weapon_type_hash: int, weapon_element_hash: int, weapon_rpm: int,
-                perk_hash: int, secondary_perk_hash: int, all_available_perks: list[int], subclass_hash: int = None):
-    return perkInput(weapon_type_hash, weapon_element_hash, weapon_rpm, perk_hash, secondary_perk_hash, all_available_perks, subclass_hash)
 
 class GodrollModel(tf.keras.Model):
     def __init__(self) -> None:
@@ -81,7 +51,6 @@ class GodrollModel(tf.keras.Model):
         x = self.dense1(x)
         x = self.dense2(x)
         x = self._output(x)
-
         return x
 
     def train(self, inputs: list[dict], labels: list[int], epochs: int = 10, batch_size: int = 32):
@@ -100,4 +69,3 @@ class GodrollModel(tf.keras.Model):
     def load(self, path: str):
         # load the model
         self.load(path)
-

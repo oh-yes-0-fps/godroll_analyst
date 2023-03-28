@@ -1,16 +1,21 @@
 
-from selenium import webdriver
+from enum import Enum
+import urllib3
+import html5lib
 import json
-from src.util import log_err
+import os.path
 
-from util import log
+from util import log, log_err
 
 
-def control_leaderboard(page: int) -> str:
-    return f"https://destinytracker.com/destiny-2/leaderboards/seasonal/all/default?page={page}&playlist=10"
+class TrnActivityId(Enum):
+    TRIALS = 84
+    CONTROL = 10
 
-def trials_leaderboard(page: int) -> str:
-    return f"https://destinytracker.com/destiny-2/leaderboards/seasonal/all/default?page={page}&playlist=84"
+
+def leaderboard(page: int, activity: TrnActivityId) -> str:
+    return f"http://destinytracker.com/destiny-2/leaderboards/seasonal/all/default?page={page}&playlist={activity.value}"
+
 
 def platform_to_int(platform: str) -> int:
     if platform == "xbl":
@@ -27,44 +32,42 @@ def platform_to_int(platform: str) -> int:
 
 PLAYER_COUNT = 12500
 
-PAGE_COUNT =  int((PLAYER_COUNT / 2) / 100)
+PAGE_COUNT = int(PLAYER_COUNT / 100)
 
-def scrape() -> bool:
+
+def scrape_urllib3_thread(page_start: int, page_end) -> bool:
     finished = True
-    out_dict:list[tuple[int,int]] = []
-    driver = webdriver.Chrome()
+    out_dict: list[tuple[int, int]] = []
     try:
-        for page in range(1, PAGE_COUNT + 1):
-            driver.get(control_leaderboard(page))
-            driver.implicitly_wait(2)
-            for entry in range(1, 101):
-                try:
-                    href = driver.find_element(
-                            "xpath", f"//*[@id=\"app\"]/div[2]/div[3]/div/main/div[3]/div[2]/div/div/div[1]/div[2]/table/tbody/tr[{entry}]/td[2]/div/a"
-                        ).get_attribute("href").split("/")
-                    out_dict.append((href[-1], platform_to_int(href[-2])))
-                except Exception as e:
-                    print(e)
-                    break
-        for page in range(1, PAGE_COUNT + 1):
-            driver.get(trials_leaderboard(page))
-            driver.implicitly_wait(2)
-            for entry in range(1, 101):
-                try:
-                    href = driver.find_element(
-                            "xpath", f"//*[@id=\"app\"]/div[2]/div[3]/div/main/div[3]/div[2]/div/div/div[1]/div[2]/table/tbody/tr[{entry}]/td[2]/div/a"
-                        ).get_attribute("href").split("/")
-                    out_dict.append((int(href[-1]), platform_to_int(href[-2])))
-                except Exception as e:
-                    print(e)
-                    break
+        for page in range(page_start, page_end + 1):
+            with urllib3.PoolManager() as http:
+                for r in [http.request("GET", leaderboard(page, TrnActivityId.TRIALS)), http.request("GET", leaderboard(page, TrnActivityId.CONTROL))]:
+                    # r = http.request("GET", leaderboard(page, TrnActivityId.CONTROL))
+                    table_body = html5lib.parse(
+                        r.data)[1][0][4][2][0][1][5][1][0][0][3][2][0][1]
+                    for entry_index in range(0, 100):
+                        try:
+                            entry = table_body[entry_index]
+                            href = entry[1][0][0].get("href").split("/")
+                            elo = int(entry[3][0][0].tail.replace(
+                                ",", "").replace(" ", ""))
+                            out_dict.append(
+                                (int(href[-1]), platform_to_int(href[-2]), elo))
+                            log((href[-1], platform_to_int(href[-2])))
+                        except Exception as e:
+                            log_err(
+                                f"Error while scraping (player iteration) {e}")
+                            break
     except Exception as e:
         finished = False
         log_err(f"Error while scraping {e}")
     with open("database/players.json", "w") as f:
+        if not os.path.exists("database"):
+            os.mkdir("database")
         log(f"Writing {len(out_dict)} players to database/players.json")
         json.dump(out_dict, f)
-    driver.close()
     return finished
 
-scrape()
+
+if __name__ == "__main__":
+    scrape_urllib3_thread()
