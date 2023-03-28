@@ -17,11 +17,6 @@ class Platform(Enum):
         else:
             raise ValueError("Invalid platform value")
 
-
-
-
-
-
 async def main():
     destiny = pydest.Pydest("89c9db2c0a8b46449bb5e654b6e594d0")
 
