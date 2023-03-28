@@ -1,14 +1,15 @@
 from dataclasses import dataclass
 import multiprocessing
+from multiprocessing.managers import DictProxy
 import time
 import asyncio
 import os.path
+from typing import Callable, Union
 
 from src.util import log, log_err
 import src.trainer as trainer
 import src.crawler as crawler
 from src.bungie_data_grabber import get_player_by_id, player_valid
-
 
 @dataclass()
 class perkInput:
@@ -30,6 +31,57 @@ class perkInput:
             "all_available_perks": tuple(self.all_available_perks),
             "subclass_hash": self.subclass_hash
         }
+
+class PrintAnalytics:
+
+    def __init__(self, topic: str):
+        self.program_init_time = time.time()
+        self.last_update = self.program_init_time
+        self.fields:dict[str, Union[str, int, float]] = {}
+        self.shared_data = shared_state
+        self.lock = shared_state_lock
+        with self.lock:
+            self.shared_data["print_topics"] = {}
+        self.add_field("General", "Program Uptime", time.time() - self.program_init_time)
+
+    def add_field(self, name:str, default: Union[str, int, float]) -> Callable[[Union[str, int, float]], None]:
+        self.fields[name] = default
+        self.__update()
+        return lambda x: self.__update_field(name, x)
+
+    def __update(self):
+        self.topics = g_topics
+        for topic in g_topics:
+            self.shared_data["print_topics"][topic] = g_topics[topic]
+
+    def __update_field(self, name, value):
+        g_topics: dict = self.shared_data["print_topics"]
+        g_topics[topic][name] = valuey
+        self.__update(g_topics)
+
+    def drop_topic(self, topic:str):
+        g_topics: dict = self.shared_data["print_topics"]
+        if topic in g_topics:
+            del g_topics[topic]
+        self.__update(g_topics)
+
+    def format_output(self):
+        print(f"Formatting output (topics are {self.topics.keys()})")
+        output = "-"*21 + "\n"
+        for topic in self.topics:
+            output += f"|_{topic:15}_|\n"
+            for field in self.topics[topic]:
+                output += "| " + f"{field:15}" + " : " + f" {self.topics[topic][field]}\n"
+        output += "-"*21
+        return output
+    
+    def print(self):
+        self.__update_field("General", "Program Uptime", time.time() - self.program_init_time)
+        if time.time() - self.last_update < 1:
+            return
+        self.last_update = time.time()
+        os.system("cls")
+        print(self.format_output())
 
 
 GLOBAL_DATA = {}
@@ -57,7 +109,7 @@ PROCESSES: list[multiprocessing.Process] = []
 
 
 def crawler_main():
-    _time = time.time()
+    crawler.scrape()
 
 
 def trainer_main():
@@ -88,9 +140,13 @@ def bungie_main():
 
 
 if __name__ == "__main__":
-    # p = multiprocessing.Process(target=crawler_main)
-    # PROCESSES.append(p)
-    # p.start()
+    shared_state = multiprocessing.Manager().dict()
+    shared_state_lock = multiprocessing.Lock()
+
+    analytics = PrintAnalytics(multiprocessing.Manager().dict())
+    p = multiprocessing.Process(target=crawler_main)
+    PROCESSES.append(p)
+    p.start()
     # p = multiprocessing.Process(target=trainer_main)
     # PROCESSES.append(p)
     # p.start()
@@ -99,7 +155,8 @@ if __name__ == "__main__":
     # p.start()
     # for proc in PROCESSES[LAST_PROCESS:]:
     #     proc.join()
-    crawler.scrape()
+    while True:
+        analytics.print()
 
 # loop = asyncio.get_event_loop()
 # loop.run_until_complete(main())

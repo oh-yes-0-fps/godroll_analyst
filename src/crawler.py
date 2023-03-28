@@ -1,12 +1,14 @@
 
 from enum import Enum
+import multiprocessing
+import time
 import urllib3
 import html5lib
 import json
 import os.path
 import threading
-
-from src.util import log, log_err
+from main import PrintAnalytics
+from src.util import log, log_debug, log_err
 
 
 class TrnActivityId(Enum):
@@ -30,6 +32,8 @@ def platform_to_int(platform: str) -> int:
     else:
         raise ValueError("Invalid platform value")
 
+players_grabbed = 0
+
 __glbl_dict = {}
 class __singleton_dict:
     @staticmethod
@@ -47,9 +51,11 @@ class __singleton_dict:
         global __glbl_dict
         return __glbl_dict.copy()
 
+
 PLAYER_COUNT = 12500
 THREAD_COUNT = 5
 PAGE_COUNT = int(PLAYER_COUNT / 100)
+
 
 def __scraper_thread(page_start: int, page_end: int) -> bool:
     finished = True
@@ -66,8 +72,10 @@ def __scraper_thread(page_start: int, page_end: int) -> bool:
                             href = entry[1][0][0].get("href").split("/")
                             elo = int(entry[3][0][0].tail.replace(
                                 ",", "").replace(" ", ""))
-                            __singleton_dict.insert(int(href[-1]), (platform_to_int(href[-2]), elo))
-                            log((href[-1], platform_to_int(href[-2])))
+                            __singleton_dict.insert(
+                                int(href[-1]), (platform_to_int(href[-2]), elo))
+                            
+                            log_debug(href[-1])
                         except Exception as e:
                             log_err(
                                 f"Error while scraping (player iteration) {e}")
@@ -75,11 +83,18 @@ def __scraper_thread(page_start: int, page_end: int) -> bool:
     except Exception as e:
         finished = False
         log_err(f"Error while scraping {e}")
-    
+
     return finished
 
 
 def scrape():
+    analytics = PrintAnalytics(multiprocessing.Manager().dict())
+    global players_grabbed
+    players_grabbed = 0
+    start_time = time.time()
+    updater1 = analytics.add_field("Scraper", "Uptime", time.time() - start_time)
+    updater2 = analytics.add_field("Scraper", "Players Grabbed", players_grabbed)
+    updater3 = analytics.add_field("Scraper", "Players/s", f"{players_grabbed / (time.time()+0.1 - start_time):.3f}/s")
     __singleton_dict.clear()
     page_start = 1
     page_end = PAGE_COUNT
@@ -87,16 +102,19 @@ def scrape():
     threads: list[threading.Thread] = []
     for i in range(0, THREAD_COUNT):
         threads.append(
-            threading.Thread(target=__scraper_thread, args=(page_start, page_end)))
+            threading.Thread(target=__scraper_thread, args=(page_start, page_start + page_start)))
         page_start += page_step
-        page_end += page_step
     for t in threads:
         t.start()
-    for t in threads:
-        t.join()
+    while threading.active_count() > 1:
+        time.sleep(1)
+        updater1(time.time() - start_time)
+        updater2(players_grabbed)
+        updater3(f"{players_grabbed / (time.time()+0.1 - start_time):.3f}/s")
     if not os.path.exists("database"):
         os.mkdir("database")
     out_dict = __singleton_dict.get_cpy()
     with open("database/players.json", "w") as f:
         log(f"Writing {len(out_dict)} players to database/players.json")
         json.dump(out_dict, f)
+    analytics.drop_topic("Scraper")
