@@ -10,19 +10,39 @@ import numpy as np
 #   - all available perks
 #   - subclass hash (optional)
 
+class perkInput:
+    def __init__(self, weapon_type_hash: int, weapon_element_hash: int, weapon_rpm: int,
+                    perk_hash: int, secondary_perk_hash: int, all_available_perks: list[int], subclass_hash: int = 0):
+        self.weapon_type_hash = weapon_type_hash
+        self.weapon_element_hash = weapon_element_hash
+        self.weapon_rpm = weapon_rpm
+        self.perk_hash = perk_hash
+        self.secondary_perk_hash = secondary_perk_hash
+        self.subclass_hash = subclass_hash
+        if len(all_available_perks) > 12:
+            all_available_perks = all_available_perks[:12]
+        elif len(all_available_perks) < 12:
+            for i in range(12 - len(all_available_perks)):
+                all_available_perks.append(0)
+        self.all_available_perks = all_available_perks
+
+    def to_dict(self) -> dict:
+        return {
+            "weapon_type_hash": self.weapon_type_hash,
+            "weapon_element_hash": self.weapon_element_hash,
+            "weapon_rpm": self.weapon_rpm,
+            "perk_hash": self.perk_hash,
+            "other_perk_hash": self.secondary_perk_hash,
+            "all_available_perks": tuple(self.all_available_perks),
+            "subclass_hash": self.subclass_hash
+        }
+
+
+
+
 def make_input(weapon_type_hash: int, weapon_element_hash: int, weapon_rpm: int,
                 perk_hash: int, secondary_perk_hash: int, all_available_perks: list[int], subclass_hash: int = None):
-    # make the input
-    input = {
-        "weapon_type_hash": weapon_type_hash,
-        "weapon_element_hash": weapon_element_hash,
-        "weapon_rpm": weapon_rpm,
-        "perk_hash": perk_hash,
-        "other_perk_hash": secondary_perk_hash,
-        "all_available_perks": all_available_perks,
-        "subclass_hash": subclass_hash
-    }
-    return input
+    return perkInput(weapon_type_hash, weapon_element_hash, weapon_rpm, perk_hash, secondary_perk_hash, all_available_perks, subclass_hash)
 
 class GodrollModel(tf.keras.Model):
     def __init__(self) -> None:
@@ -37,6 +57,12 @@ class GodrollModel(tf.keras.Model):
         self.all_available_perks = tf.keras.layers.Input(shape=(12,), name="all_available_perks", dtype="int64")
         self.subclass_hash = tf.keras.layers.Input(shape=(1,), name="subclass_hash", dtype="int64")
 
+        #increase weight of cerain fields
+        self.perk_hash = tf.keras.layers.Lambda(lambda x: x * 5)(self.perk_hash)
+        self.weapon_type_hash = tf.keras.layers.Lambda(lambda x: x * 3)(self.weapon_type_hash)
+        self.all_available_perks = tf.keras.layers.Lambda(lambda x: x * 0.5)(self.all_available_perks)
+
+
         # make the model
         self.concat = tf.keras.layers.Concatenate()
         self.flatten = tf.keras.layers.Flatten()
@@ -45,9 +71,9 @@ class GodrollModel(tf.keras.Model):
         self.dense1 = tf.keras.layers.Dense(64, activation="relu")
         self.dense2 = tf.keras.layers.Dense(64, activation="relu")
 
-        self._output = tf.keras.layers.Dense(1, activation="sigmoid")
+        self._output = tf.keras.layers.Dense(1, activation="sigmoid", kernel_initializer=tf.keras.initializers.RandomNormal(mean=0.5, stddev=0.1))
 
-    def call(self):
+    def __call__(self):
         # make the model
         x = self.concat([self.weapon_type_hash, self.weapon_element_hash, self.weapon_rpm, self.perk_hash, self.other_perk_hash, self.all_available_perks, self.subclass_hash])
         x = self.flatten(x)
