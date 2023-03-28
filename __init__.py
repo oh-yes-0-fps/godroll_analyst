@@ -7,7 +7,7 @@ import os.path
 from src.util import log, log_err
 import src.trainer as trainer
 import src.crawler as crawler
-from bungie_data_grabber import get_player_by_id, player_valid
+from src.bungie_data_grabber import get_player_by_id, player_valid
 
 
 @dataclass()

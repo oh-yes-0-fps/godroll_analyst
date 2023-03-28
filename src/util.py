@@ -3,7 +3,7 @@ import traceback
 
 logging.basicConfig(level=logging.INFO, filename="runtime.log", filemode="w", format="%(asctime)s - %(levelname)s - %(message)s")
 
-DEBUG = True
+DEBUG = False
 
 def log(message):
     if DEBUG: print(message)

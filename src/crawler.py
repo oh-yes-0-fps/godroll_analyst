@@ -6,7 +6,7 @@ import json
 import os.path
 import threading
 
-from util import log, log_err
+from src.util import log, log_err
 
 
 class TrnActivityId(Enum):
@@ -100,6 +100,3 @@ def scrape():
     with open("database/players.json", "w") as f:
         log(f"Writing {len(out_dict)} players to database/players.json")
         json.dump(out_dict, f)
-
-if __name__ == "__main__":
-    scrape()
