@@ -4,6 +4,7 @@ import urllib3
 import html5lib
 import json
 import os.path
+import threading
 
 from util import log, log_err
 
@@ -29,15 +30,29 @@ def platform_to_int(platform: str) -> int:
     else:
         raise ValueError("Invalid platform value")
 
+__glbl_dict = {}
+class __singleton_dict:
+    @staticmethod
+    def insert(key, value):
+        global __glbl_dict
+        __glbl_dict[key] = value
+
+    @staticmethod
+    def clear():
+        global __glbl_dict
+        __glbl_dict = {}
+
+    @staticmethod
+    def get_cpy():
+        global __glbl_dict
+        return __glbl_dict.copy()
 
 PLAYER_COUNT = 12500
 THREAD_COUNT = 5
 PAGE_COUNT = int(PLAYER_COUNT / 100)
 
-
-def scrape_urllib3_thread(page_start: int, page_end) -> bool:
+def __scraper_thread(page_start: int, page_end: int) -> bool:
     finished = True
-    out_dict: list[tuple[int, int]] = []
     try:
         for page in range(page_start, page_end + 1):
             with urllib3.PoolManager() as http:
@@ -51,8 +66,7 @@ def scrape_urllib3_thread(page_start: int, page_end) -> bool:
                             href = entry[1][0][0].get("href").split("/")
                             elo = int(entry[3][0][0].tail.replace(
                                 ",", "").replace(" ", ""))
-                            out_dict.append(
-                                (int(href[-1]), platform_to_int(href[-2]), elo))
+                            __singleton_dict.insert(int(href[-1]), (platform_to_int(href[-2]), elo))
                             log((href[-1], platform_to_int(href[-2])))
                         except Exception as e:
                             log_err(
@@ -61,13 +75,31 @@ def scrape_urllib3_thread(page_start: int, page_end) -> bool:
     except Exception as e:
         finished = False
         log_err(f"Error while scraping {e}")
-    with open("database/players.json", "w") as f:
-        if not os.path.exists("database"):
-            os.mkdir("database")
-        log(f"Writing {len(out_dict)} players to database/players.json")
-        json.dump(out_dict, f)
+    
     return finished
 
 
+def scrape():
+    __singleton_dict.clear()
+    page_start = 1
+    page_end = PAGE_COUNT
+    page_step = int(PAGE_COUNT / THREAD_COUNT)
+    threads: list[threading.Thread] = []
+    for i in range(0, THREAD_COUNT):
+        threads.append(
+            threading.Thread(target=__scraper_thread, args=(page_start, page_end)))
+        page_start += page_step
+        page_end += page_step
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    if not os.path.exists("database"):
+        os.mkdir("database")
+    out_dict = __singleton_dict.get_cpy()
+    with open("database/players.json", "w") as f:
+        log(f"Writing {len(out_dict)} players to database/players.json")
+        json.dump(out_dict, f)
+
 if __name__ == "__main__":
-    scrape_urllib3_thread(1, PAGE_COUNT)
+    scrape()

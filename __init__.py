@@ -6,7 +6,9 @@ import os.path
 
 from src.util import log, log_err
 import src.trainer as trainer
+import src.crawler as crawler
 from bungie_data_grabber import get_player_by_id, player_valid
+
 
 @dataclass()
 class perkInput:
@@ -29,7 +31,9 @@ class perkInput:
             "subclass_hash": self.subclass_hash
         }
 
+
 GLOBAL_DATA = {}
+
 
 def write_global(key, value):
     try:
@@ -37,6 +41,7 @@ def write_global(key, value):
         GLOBAL_DATA[key] = value
     except Exception as e:
         log_err(f"Gloabl data write error: {e}")
+
 
 def read_global(key):
     try:
@@ -46,12 +51,14 @@ def read_global(key):
         log_err(f"Gloabl data read error: {e}")
         return None
 
+
 LAST_PROCESS = 0
 PROCESSES: list[multiprocessing.Process] = []
 
+
 def crawler_main():
     _time = time.time()
-    
+
 
 def trainer_main():
     _time = time.time()
@@ -78,21 +85,21 @@ def bungie_main():
             player = get_player_by_id(raw_player[0], raw_player[1])
             if not player_valid(player):
                 continue
-            
-        
+
 
 if __name__ == "__main__":
-    p = multiprocessing.Process(target=crawler_main)
-    PROCESSES.append(p)
-    p.start()
-    p = multiprocessing.Process(target=trainer_main)
-    PROCESSES.append(p)
-    p.start()
-    p = multiprocessing.Process(target=bungie_main)
-    PROCESSES.append(p)
-    p.start()
-    for proc in PROCESSES[LAST_PROCESS:]:
-        proc.join()
+    # p = multiprocessing.Process(target=crawler_main)
+    # PROCESSES.append(p)
+    # p.start()
+    # p = multiprocessing.Process(target=trainer_main)
+    # PROCESSES.append(p)
+    # p.start()
+    # p = multiprocessing.Process(target=bungie_main)
+    # PROCESSES.append(p)
+    # p.start()
+    # for proc in PROCESSES[LAST_PROCESS:]:
+    #     proc.join()
+    crawler.scrape()
 
 # loop = asyncio.get_event_loop()
 # loop.run_until_complete(main())
