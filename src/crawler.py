@@ -31,7 +31,7 @@ def platform_to_int(platform: str) -> int:
 
 
 PLAYER_COUNT = 12500
-
+THREAD_COUNT = 5
 PAGE_COUNT = int(PLAYER_COUNT / 100)
 
 
@@ -70,4 +70,4 @@ def scrape_urllib3_thread(page_start: int, page_end) -> bool:
 
 
 if __name__ == "__main__":
-    scrape_urllib3_thread()
+    scrape_urllib3_thread(1, PAGE_COUNT)
