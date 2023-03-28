@@ -36,13 +36,14 @@ class PrintAnalytics:
 
     def __init__(self, topic: str):
         self.program_init_time = time.time()
+        self.topic = topic
         self.last_update = self.program_init_time
         self.fields:dict[str, Union[str, int, float]] = {}
         self.shared_data = shared_state
         self.lock = shared_state_lock
         with self.lock:
             self.shared_data["print_topics"] = {}
-        self.add_field("General", "Program Uptime", time.time() - self.program_init_time)
+        self.add_field("Program Uptime", f"{time.time() - self.program_init_time:.3f}s")
 
     def add_field(self, name:str, default: Union[str, int, float]) -> Callable[[Union[str, int, float]], None]:
         self.fields[name] = default
@@ -50,14 +51,13 @@ class PrintAnalytics:
         return lambda x: self.__update_field(name, x)
 
     def __update(self):
-        self.topics = g_topics
-        for topic in g_topics:
-            self.shared_data["print_topics"][topic] = g_topics[topic]
+        with self.lock:
+            self.shared_data["print_topics"][self.topic] = self.fields
 
     def __update_field(self, name, value):
-        g_topics: dict = self.shared_data["print_topics"]
-        g_topics[topic][name] = valuey
-        self.__update(g_topics)
+        if name in self.fields:
+            self.fields[name] = value
+            self.__update()
 
     def drop_topic(self, topic:str):
         g_topics: dict = self.shared_data["print_topics"]
@@ -65,23 +65,24 @@ class PrintAnalytics:
             del g_topics[topic]
         self.__update(g_topics)
 
-    def format_output(self):
-        print(f"Formatting output (topics are {self.topics.keys()})")
+    def format_output(self, _topics: dict[str, dict]):
         output = "-"*21 + "\n"
-        for topic in self.topics:
+        for topic in _topics:
             output += f"|_{topic:15}_|\n"
-            for field in self.topics[topic]:
-                output += "| " + f"{field:15}" + " : " + f" {self.topics[topic][field]}\n"
+            for field in _topics[topic]:
+                output += "| " + f"{field:15}" + " : " + f" {_topics[topic][field]}\n"
         output += "-"*21
         return output
-    
+
     def print(self):
-        self.__update_field("General", "Program Uptime", time.time() - self.program_init_time)
+        self.__update_field("Program Uptime", time.time() - self.program_init_time)
         if time.time() - self.last_update < 1:
             return
+        with self.lock:
+            _topics = self.shared_data["print_topics"]
+            # os.system("cls")
+            print(self.format_output(_topics))
         self.last_update = time.time()
-        os.system("cls")
-        print(self.format_output())
 
 
 GLOBAL_DATA = {}
@@ -140,9 +141,12 @@ def bungie_main():
 
 
 if __name__ == "__main__":
+    print("Starting main process")
     shared_state = multiprocessing.Manager().dict()
     shared_state_lock = multiprocessing.Lock()
+    shared_state._lock = shared_state_lock
 
+    print("Starting sub processes")
     analytics = PrintAnalytics(multiprocessing.Manager().dict())
     p = multiprocessing.Process(target=crawler_main)
     PROCESSES.append(p)
