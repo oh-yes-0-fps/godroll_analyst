@@ -103,6 +103,7 @@ def scrape(tdata: DictProxy):
     for i in range(0, THREAD_COUNT):
         threads.append(
             threading.Thread(target=__scraper_thread, args=(page_start, page_start + page_step, players_grabbed, i)))
+        print(f"Thread {i} started with pages {page_start} to {page_start + page_step}")
         page_start += page_step
     for t in threads:
         t.start()

@@ -78,7 +78,11 @@ class PrintAnalytics:
     def print(self):
         if time.time() - self.last_update < 1:
             return
-        os.system("cls")
+        # if on windows use cls
+        if os.name == 'nt':
+            os.system('cls')
+        else:
+            os.system('clear')
         print(self.format_output(self.shared_data))
         self.last_update = time.time()
 
