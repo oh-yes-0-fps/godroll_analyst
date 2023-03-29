@@ -1,7 +1,6 @@
 from dataclasses import dataclass
 import multiprocessing
 from multiprocessing.managers import DictProxy
-import queue
 import time
 import asyncio
 import os.path
@@ -79,7 +78,7 @@ class PrintAnalytics:
     def print(self):
         if time.time() - self.last_update < 1:
             return
-        # os.system("cls")
+        os.system("cls")
         print(self.format_output(self.shared_data))
         self.last_update = time.time()
 
