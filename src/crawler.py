@@ -102,7 +102,7 @@ def scrape(tdata: DictProxy):
     # make a mutex int u can share between threads 
     for i in range(0, THREAD_COUNT):
         threads.append(
-            threading.Thread(target=__scraper_thread, args=(page_start, page_start + page_start, players_grabbed, i)))
+            threading.Thread(target=__scraper_thread, args=(page_start, page_start + page_step, players_grabbed, i)))
         page_start += page_step
     for t in threads:
         t.start()
