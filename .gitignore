@@ -128,4 +128,5 @@ dmypy.json
 # Pyre type checker
 .pyre/
 database/players.json
-database/good_clans.json
+database/good_clans
+test.py

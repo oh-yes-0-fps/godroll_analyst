@@ -61,13 +61,13 @@ class PrintAnalytics:
     def drop_topic(self):
         if self.dropped:
             return
-        del self.shared_data[self.topic]
+        self.shared_data[self.topic] = "dropped"
         self.dropped = True
 
     def format_output(self, _topics: dict[str, dict]):
         output = "-"*21 + "\n"
         for topic in _topics:
-            if "topic" not in topic:
+            if "topic" not in topic or _topics[topic] == "dropped":
                 continue
             output += f"|_{topic.removeprefix('topic_')}_________________|\n"
             for field in _topics[topic]:
@@ -78,7 +78,6 @@ class PrintAnalytics:
     def print(self):
         if time.time() - self.last_update < 1:
             return
-        # if on windows use cls
         if os.name == 'nt':
             os.system('cls')
         else:
@@ -147,6 +146,8 @@ if __name__ == "__main__":
 
     print("Starting main process")
     analytics_data = multiprocessing.Manager().dict()
+
+    player_data = multiprocessing.Manager().list()
 
     print("Starting sub processes")
     analytics = PrintAnalytics("Main", analytics_data)

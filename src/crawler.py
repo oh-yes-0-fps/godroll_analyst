@@ -17,8 +17,8 @@ class TrnActivityId(Enum):
     CONTROL = 10
 
 
-def leaderboard(page: int, activity: TrnActivityId) -> str:
-    return f"http://destinytracker.com/destiny-2/leaderboards/seasonal/all/default?page={page}&playlist={activity.value}"
+def leaderboard(page: int, activity: TrnActivityId, playerbase = "all") -> str:
+    return f"http://destinytracker.com/destiny-2/leaderboards/seasonal/{playerbase}/default?page={page}&playlist={activity.value}"
 
 
 def platform_to_int(platform: str) -> int:
@@ -41,6 +41,11 @@ class __singleton_dict:
         __glbl_dict[key] = value
 
     @staticmethod
+    def keys():
+        global __glbl_dict
+        return __glbl_dict.keys()
+
+    @staticmethod
     def clear():
         global __glbl_dict
         __glbl_dict = {}
@@ -56,12 +61,15 @@ THREAD_COUNT = 5
 PAGE_COUNT = int(PLAYER_COUNT / 100)
 
 
-def __scraper_thread(page_start: int, page_end: int, players_grabbed: list[int], thread_id: int) -> bool:
+def __scraper_thread(page_start: int, page_end: int) -> bool:
     finished = True
+    players_grabbed = 0
     try:
         for page in range(page_start, page_end + 1):
             with urllib3.PoolManager() as http:
-                for r in [http.request("GET", leaderboard(page, TrnActivityId.TRIALS)), http.request("GET", leaderboard(page, TrnActivityId.CONTROL))]:
+                for r in [
+                    http.request("GET", leaderboard(page, TrnActivityId.TRIALS)), http.request("GET", leaderboard(page, TrnActivityId.CONTROL)),
+                    http.request("GET", leaderboard(page, TrnActivityId.TRIALS, "steam")), http.request("GET", leaderboard(page, TrnActivityId.TRIALS, "steam")),]:
                     # r = http.request("GET", leaderboard(page, TrnActivityId.CONTROL))
                     table_body = html5lib.parse(
                         r.data)[1][0][4][2][0][1][5][1][0][0][3][2][0][1]
@@ -74,15 +82,16 @@ def __scraper_thread(page_start: int, page_end: int, players_grabbed: list[int],
                             __singleton_dict.insert(
                                 int(href[-1]), (platform_to_int(href[-2]), elo))
                             log_debug(href[-1])
-                            players_grabbed[thread_id] += 1
+                            players_grabbed += 1
                         except Exception as e:
                             log_err(
                                 f"Error while scraping (player iteration) {e}")
                             break
+            if players_grabbed > (page_end-page_start)*100:
+                break
     except Exception as e:
         finished = False
         log_err(f"Error while scraping {e}")
-
     return finished
 
 
@@ -90,29 +99,28 @@ def scrape(tdata: DictProxy):
     analytics = PrintAnalytics("Scraper", tdata)
     start_time = time.time()
     players_grabbed = []
-    for i in range(0, THREAD_COUNT):
-        players_grabbed.append(0)
     updater1 = analytics.add_field("Uptime", time.time() - start_time)
-    updater2 = analytics.add_field("Players Grabbed", players_grabbed[0])
-    updater3 = analytics.add_field("Players/s", f"{players_grabbed[0] / (time.time()+0.1 - start_time):.3f}/s")
+    updater2 = analytics.add_field("Players Grabbed", 0)
+    updater3 = analytics.add_field("Players/s", f"{0}/s")
     __singleton_dict.clear()
     page_start = 1
     page_step = int(PAGE_COUNT / THREAD_COUNT)
     threads: list[threading.Thread] = []
     # make a mutex int u can share between threads 
     for i in range(0, THREAD_COUNT):
+        players_grabbed.append(0)
         threads.append(
-            threading.Thread(target=__scraper_thread, args=(page_start, page_start + page_step, players_grabbed, i)))
-        print(f"Thread {i} started with pages {page_start} to {page_start + page_step}")
+            threading.Thread(target=__scraper_thread, args=(page_start, page_start + page_step)))
         page_start += page_step
     for t in threads:
         t.start()
     while threading.active_count() > 1:
         time.sleep(1)
         try:
+            players_grabbed = len(__singleton_dict.keys())
             updater1(time.time() - start_time)
-            updater2(sum(players_grabbed))
-            updater3(f"{sum(players_grabbed) / (time.time()+0.1 - start_time):.3f}/s")
+            updater2(players_grabbed)
+            updater3(f"{players_grabbed / (time.time()+0.1 - start_time):.3f}/s")
         except:
             pass
     if not os.path.exists("database"):
@@ -121,4 +129,4 @@ def scrape(tdata: DictProxy):
     with open("database/players.json", "w") as f:
         log(f"Writing {len(out_dict)} players to database/players.json")
         json.dump(out_dict, f)
-    analytics.drop_topic("Scraper")
+    analytics.drop_topic()
