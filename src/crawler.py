@@ -1,6 +1,7 @@
 
 from enum import Enum
 import multiprocessing
+from multiprocessing.managers import DictProxy
 import time
 import urllib3
 import html5lib
@@ -32,8 +33,6 @@ def platform_to_int(platform: str) -> int:
     else:
         raise ValueError("Invalid platform value")
 
-players_grabbed = 0
-
 __glbl_dict = {}
 class __singleton_dict:
     @staticmethod
@@ -57,7 +56,7 @@ THREAD_COUNT = 5
 PAGE_COUNT = int(PLAYER_COUNT / 100)
 
 
-def __scraper_thread(page_start: int, page_end: int) -> bool:
+def __scraper_thread(page_start: int, page_end: int, players_grabbed: list[int], thread_id: int) -> bool:
     finished = True
     try:
         for page in range(page_start, page_end + 1):
@@ -74,8 +73,8 @@ def __scraper_thread(page_start: int, page_end: int) -> bool:
                                 ",", "").replace(" ", ""))
                             __singleton_dict.insert(
                                 int(href[-1]), (platform_to_int(href[-2]), elo))
-                            
                             log_debug(href[-1])
+                            players_grabbed[thread_id] += 1
                         except Exception as e:
                             log_err(
                                 f"Error while scraping (player iteration) {e}")
@@ -87,30 +86,34 @@ def __scraper_thread(page_start: int, page_end: int) -> bool:
     return finished
 
 
-def scrape():
-    analytics = PrintAnalytics(multiprocessing.Manager().dict())
-    global players_grabbed
-    players_grabbed = 0
+def scrape(tdata: DictProxy):
+    analytics = PrintAnalytics("Scraper", tdata)
     start_time = time.time()
-    updater1 = analytics.add_field("Scraper", "Uptime", time.time() - start_time)
-    updater2 = analytics.add_field("Scraper", "Players Grabbed", players_grabbed)
-    updater3 = analytics.add_field("Scraper", "Players/s", f"{players_grabbed / (time.time()+0.1 - start_time):.3f}/s")
+    players_grabbed = []
+    for i in range(0, THREAD_COUNT):
+        players_grabbed.append(0)
+    updater1 = analytics.add_field("Uptime", time.time() - start_time)
+    updater2 = analytics.add_field("Players Grabbed", players_grabbed[0])
+    updater3 = analytics.add_field("Players/s", f"{players_grabbed[0] / (time.time()+0.1 - start_time):.3f}/s")
     __singleton_dict.clear()
     page_start = 1
-    page_end = PAGE_COUNT
     page_step = int(PAGE_COUNT / THREAD_COUNT)
     threads: list[threading.Thread] = []
+    # make a mutex int u can share between threads 
     for i in range(0, THREAD_COUNT):
         threads.append(
-            threading.Thread(target=__scraper_thread, args=(page_start, page_start + page_start)))
+            threading.Thread(target=__scraper_thread, args=(page_start, page_start + page_start, players_grabbed, i)))
         page_start += page_step
     for t in threads:
         t.start()
     while threading.active_count() > 1:
         time.sleep(1)
-        updater1(time.time() - start_time)
-        updater2(players_grabbed)
-        updater3(f"{players_grabbed / (time.time()+0.1 - start_time):.3f}/s")
+        try:
+            updater1(time.time() - start_time)
+            updater2(sum(players_grabbed))
+            updater3(f"{sum(players_grabbed) / (time.time()+0.1 - start_time):.3f}/s")
+        except:
+            pass
     if not os.path.exists("database"):
         os.mkdir("database")
     out_dict = __singleton_dict.get_cpy()

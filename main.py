@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 import multiprocessing
 from multiprocessing.managers import DictProxy
+import queue
 import time
 import asyncio
 import os.path
@@ -34,16 +35,12 @@ class perkInput:
 
 class PrintAnalytics:
 
-    def __init__(self, topic: str):
-        self.program_init_time = time.time()
-        self.topic = topic
-        self.last_update = self.program_init_time
+    def __init__(self, topic: str, shared_data: DictProxy):
+        self.dropped = False
+        self.topic = "topic_"+topic
+        self.last_update = time.time()
         self.fields:dict[str, Union[str, int, float]] = {}
-        self.shared_data = shared_state
-        self.lock = shared_state_lock
-        with self.lock:
-            self.shared_data["print_topics"] = {}
-        self.add_field("Program Uptime", f"{time.time() - self.program_init_time:.3f}s")
+        self.shared_data = shared_data
 
     def add_field(self, name:str, default: Union[str, int, float]) -> Callable[[Union[str, int, float]], None]:
         self.fields[name] = default
@@ -51,37 +48,39 @@ class PrintAnalytics:
         return lambda x: self.__update_field(name, x)
 
     def __update(self):
-        with self.lock:
-            self.shared_data["print_topics"][self.topic] = self.fields
+        if self.dropped:
+            return
+        self.shared_data[self.topic] = self.fields
 
     def __update_field(self, name, value):
+        if self.dropped:
+            return
         if name in self.fields:
             self.fields[name] = value
             self.__update()
 
-    def drop_topic(self, topic:str):
-        g_topics: dict = self.shared_data["print_topics"]
-        if topic in g_topics:
-            del g_topics[topic]
-        self.__update(g_topics)
+    def drop_topic(self):
+        if self.dropped:
+            return
+        del self.shared_data[self.topic]
+        self.dropped = True
 
     def format_output(self, _topics: dict[str, dict]):
         output = "-"*21 + "\n"
         for topic in _topics:
-            output += f"|_{topic:15}_|\n"
+            if "topic" not in topic:
+                continue
+            output += f"|_{topic.removeprefix('topic_')}_________________|\n"
             for field in _topics[topic]:
                 output += "| " + f"{field:15}" + " : " + f" {_topics[topic][field]}\n"
         output += "-"*21
         return output
 
     def print(self):
-        self.__update_field("Program Uptime", time.time() - self.program_init_time)
         if time.time() - self.last_update < 1:
             return
-        with self.lock:
-            _topics = self.shared_data["print_topics"]
-            # os.system("cls")
-            print(self.format_output(_topics))
+        # os.system("cls")
+        print(self.format_output(self.shared_data))
         self.last_update = time.time()
 
 
@@ -109,8 +108,8 @@ LAST_PROCESS = 0
 PROCESSES: list[multiprocessing.Process] = []
 
 
-def crawler_main():
-    crawler.scrape()
+def crawler_main(tdata):
+    crawler.scrape(tdata)
 
 
 def trainer_main():
@@ -141,14 +140,15 @@ def bungie_main():
 
 
 if __name__ == "__main__":
+    start_time = time.time()
+
     print("Starting main process")
-    shared_state = multiprocessing.Manager().dict()
-    shared_state_lock = multiprocessing.Lock()
-    shared_state._lock = shared_state_lock
+    analytics_data = multiprocessing.Manager().dict()
 
     print("Starting sub processes")
-    analytics = PrintAnalytics(multiprocessing.Manager().dict())
-    p = multiprocessing.Process(target=crawler_main)
+    analytics = PrintAnalytics("Main", analytics_data)
+    uptime = analytics.add_field("Program Uptime", f"{0:.3f}s")
+    p = multiprocessing.Process(target=crawler_main, args=(analytics_data,))
     PROCESSES.append(p)
     p.start()
     # p = multiprocessing.Process(target=trainer_main)
@@ -159,9 +159,9 @@ if __name__ == "__main__":
     # p.start()
     # for proc in PROCESSES[LAST_PROCESS:]:
     #     proc.join()
-    while True:
-        analytics.print()
 
-# loop = asyncio.get_event_loop()
-# loop.run_until_complete(main())
-# loop.close()
+
+
+    while True:
+        uptime(time.time() - start_time)
+        analytics.print()
